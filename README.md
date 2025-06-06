@@ -19,4 +19,4 @@ A self-hosted Dockerized application to upload, manage, and serve TV channel log
 * [Git](https://git-scm.com/downloads) installed.
 
 ### Setup and Running
-Coming Soon
+More Coming Soon
