@@ -19,4 +19,9 @@ A self-hosted Dockerized application to upload, manage, and serve TV channel log
 * [Git](https://git-scm.com/downloads) installed.
 
 ### Setup and Running
+
+I will update this readme tomorrow. Here is the Docker Run to get it going
+
+``` docker run -d --restart unless-stopped --name logo-manager -p 8084:8084 -v tv-logo-data:/app/data rcvaughn2/tv-logo-manager ```
+
 More Coming Soon
