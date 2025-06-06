@@ -15,8 +15,6 @@ A self-hosted Dockerized application to upload, manage, and serve TV channel log
 
 ### Prerequisites
 
-* [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) or [Docker Engine](https://docs.docker.com/engine/install/) (Linux) installed and running.
-* [Git](https://git-scm.com/downloads) installed.
 
 ### Setup and Running
 
