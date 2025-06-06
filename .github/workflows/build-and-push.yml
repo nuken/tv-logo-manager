@@ -1,0 +1,52 @@
+name: Build and Push Docker Image to Docker Hub
+
+# Configure when this workflow runs:
+on:
+  push:
+    branches: [ "main" ] # Trigger this workflow when code is pushed to the 'main' branch
+  pull_request:
+    branches: [ "main" ] # Also trigger for pull requests targeting the 'main' branch
+
+# Define environment variables that can be used within the workflow
+env:
+  DOCKER_IMAGE_NAME: tv-logo-manager # This is the name of your repository on Docker Hub (e.g., nuken/tv-logo-manager)
+
+# Define the jobs that make up this workflow
+jobs:
+  build-and-push:
+    # This job will run on the latest Ubuntu runner provided by GitHub Actions
+    runs-on: ubuntu-latest
+    
+    # Permissions needed for the job:
+    # - contents: read: To check out the repository code
+    # - packages: write: Required if you were pushing to GitHub Container Registry (ghcr.io).
+    #                Not strictly needed for Docker Hub, but good practice if you switch registries.
+    permissions:
+      contents: read
+      packages: write
+
+    # Define the steps to be executed within this job
+    steps:
+    - name: Checkout repository # Step 1: Get your code from GitHub
+      uses: actions/checkout@v4 # Use the official GitHub Action for checking out code
+
+    - name: Log in to Docker Hub # Step 2: Authenticate with Docker Hub
+      # This action securely logs into Docker Hub using secrets
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }} # Use a GitHub Secret for your Docker Hub username
+        password: ${{ secrets.DOCKER_PASSWORD }} # Use a GitHub Secret for your Docker Hub password
+
+    - name: Set up Docker Buildx # Step 3: Set up Buildx for improved Docker builds
+      # Buildx is a Docker CLI plugin that extends docker build capabilities
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and push Docker image # Step 4: Build and push the image to Docker Hub
+      # This action handles building the Docker image and pushing it to the registry
+      uses: docker/build-push-action@v5
+      with:
+        context: . # The build context is the root of your GitHub repository (where Dockerfile resides)
+        push: true # Set to true to push the image to Docker Hub
+        tags: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest # The full image tag for Docker Hub
+        cache-from: type=gha # Enable caching from GitHub Actions cache for faster builds
+        cache-to: type=gha,mode=max # Store build cache for future builds
