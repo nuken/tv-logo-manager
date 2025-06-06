@@ -1,9 +1,12 @@
+
+
 # tv-logo-manager/app.py
-from flask import Flask, request, send_from_directory, jsonify
+from flask import Flask, request, send_from_directory, jsonify, redirect, send_file, Response
 import os
 from werkzeug.utils import secure_filename
 import json
 from PIL import Image, ImageOps # Import ImageOps for padding/cropping
+import io # Required for in-memory image processing
 
 app = Flask(__name__)
 
@@ -48,13 +51,6 @@ def process_logo_image_to_webp(image_path):
     # color=(0,0,0,0) specifies transparent black for padding
     # centering=(0.5, 0.5) centers the image within the new padded canvas
     padded_img = ImageOps.pad(img, target_size, color=(0,0,0,0), centering=(0.5, 0.5))
-
-    # Note: With ImageOps.pad, the image is already resized and padded to the target_size.
-    # No need for a separate resize step after padding.
-    # If you wanted to keep the original image resolution but add padding,
-    # you'd calculate a new canvas size based on its aspect ratio first,
-    # then resize the original image to fit the *new padded size*, then pad.
-    # But for logos, a fixed target_size is usually best.
 
     return padded_img
 
@@ -205,6 +201,51 @@ def delete_logo(logo_id):
     
     return jsonify({"error": f"Logo ID {logo_id} not found."}), 404
 
+@app.route('/download/<int:logo_id>/<string:file_format>', methods=['GET'])
+def download_image(logo_id, file_format):
+    """
+    Allows downloading an image by its ID in specified format (webp or png).
+    """
+    logos = load_logos()
+    logo = next((l for l in logos if str(l['id']) == str(logo_id)), None)
+
+    if not logo:
+        return jsonify({"error": "Logo not found"}), 404
+
+    current_filename = logo['filename']
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], current_filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({"error": "Image file not found on server"}), 404
+
+    # Ensure the requested format is valid
+    if file_format not in ['webp', 'png']:
+        return jsonify({"error": "Invalid file format requested. Must be 'webp' or 'png'."}), 400
+
+    download_name_base = os.path.splitext(logo['original_name'])[0] # Use original name as base
+
+    if file_format == 'webp':
+        mimetype = 'image/webp'
+        download_filename = f"{download_name_base}.webp"
+        return send_file(filepath, mimetype=mimetype, as_attachment=True, download_name=download_filename)
+    
+    elif file_format == 'png':
+        mimetype = 'image/png'
+        download_filename = f"{download_name_base}.png"
+        
+        try:
+            # Open the existing WebP image
+            img = Image.open(filepath)
+            
+            # Convert to RGBA (for transparency) and save as PNG to a BytesIO object
+            img_byte_arr = io.BytesIO()
+            img.convert("RGBA").save(img_byte_arr, format='PNG')
+            img_byte_arr.seek(0) # Rewind to the beginning of the buffer
+            
+            return send_file(img_byte_arr, mimetype=mimetype, as_attachment=True, download_name=download_filename)
+        except Exception as e:
+            app.logger.error(f"Error converting and serving PNG for logo ID {logo_id}: {e}")
+            return jsonify({"error": f"Failed to convert and download image as PNG: {e}"}), 500
 
 @app.route('/')
 def index():
@@ -224,7 +265,7 @@ def index():
                 color: #333;
             }
             .container {
-                max-width: 1000px; /* Wider container for grid */
+                max-width: 1000px;
                 margin: 0 auto;
                 background-color: #fff;
                 padding: 25px;
@@ -269,77 +310,72 @@ def index():
                 margin-top: 15px;
                 padding: 10px;
                 border-radius: 4px;
-                /* Initially hidden, shown by JS */
                 display: none;
             }
             #uploadMessage.info { background-color: #e9ecef; color: #333; }
             #uploadMessage.success { background-color: #d4edda; color: #155724; }
             #uploadMessage.error { background-color: #f8d7da; color: #721c24; }
 
-            /* Grid Layout for Gallery */
             #logoGallery {
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); /* Responsive grid */
+                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
                 gap: 20px;
                 padding: 10px 0;
             }
             .logo-item {
                 border: 1px solid #e0e0e0;
                 padding: 15px;
-                background-color: #f3f3f3;
+                background-color: #f3f3f3; /* Subtle grey for contrast */
                 border-radius: 6px;
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
                 display: flex;
-                flex-direction: column; /* Stack image and details */
-                align-items: center; /* Center content horizontally */
+                flex-direction: column;
+                align-items: center;
                 text-align: center;
-                min-width: 0; /* Allow shrinking in grid */
+                min-width: 0;
             }
             .logo-item img {
-                max-width: 100%; /* Make image responsive within its grid item */
+                max-width: 100%;
                 height: auto;
-                max-height: 150px; /* Constrain height */
+                max-height: 150px;
                 border: 1px solid #eee;
                 border-radius: 4px;
-                box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
                 object-fit: contain;
                 margin-bottom: 10px;
+                box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
             }
             .logo-details {
-                width: 100%; /* Take full width of grid item */
-                flex-grow: 1; /* Allow details to expand */
+                width: 100%;
+                flex-grow: 1;
             }
             .logo-details p {
                 margin: 5px 0;
                 font-size: 0.9rem;
-                word-wrap: break-word; /* Prevent long URLs/names from overflowing */
+                word-wrap: break-word;
             }
             .logo-details strong {
                 color: #555;
             }
             .url-input {
-                width: calc(100% - 16px); /* Full width minus padding */
+                width: calc(100% - 16px);
                 padding: 8px;
                 border: 1px solid #ccc;
                 border-radius: 4px;
-                font-size: 0.8rem; /* Smaller font for URL */
+                font-size: 0.8rem;
                 background-color: #f7f7f7;
                 cursor: text;
-                overflow-x: auto; /* Allow horizontal scroll for long URLs */
+                overflow-x: auto;
             }
-            /* Update the .actions div */
             .actions {
-                margin-top: 10px; /* Keep existing margin from above content */
+                margin-top: 10px;
                 display: flex;
                 flex-wrap: wrap;
                 gap: 8px;
                 justify-content: center;
-                /* --- ADD THIS NEW STYLE --- */
-                margin-top: auto; /* This pushes the actions div to the bottom of the logo-item */
+                margin-top: auto;
             }
-
             .action-btn {
-                background-color: #28a745; /* Copy */
+                background-color: #28a745;
                 color: white;
                 border: none;
                 padding: 8px 12px;
@@ -347,49 +383,18 @@ def index():
                 border-radius: 4px;
                 font-size: 0.85rem;
                 transition: background-color 0.2s ease;
+                flex-grow: 1; /* Allow buttons to grow */
+                min-width: 0; /* Ensure buttons can shrink in flex-wrap */
             }
-            .action-btn.delete { background-color: #dc3545; } /* Delete */
-            .action-btn.reupload { background-color: #ffc107; color: #333; } /* Reupload */
+            .action-btn.delete { background-color: #dc3545; }
+            .action-btn.reupload { background-color: #ffc107; color: #333; }
+            .action-btn.download-png { background-color: #6c757d; } /* Grey for PNG */
+            .action-btn.download-webp { background-color: #17a2b8; } /* Teal for WebP */
+
 
             .action-btn:hover { filter: brightness(1.1); }
             .action-btn:active { filter: brightness(0.9); }
 
-            /* Reupload Specific UI */
-.reupload-input-container {
-    margin-top: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    border-top: 1px solid #eee;
-    padding-top: 10px;
-    /* --- ADD THESE NEW STYLES --- */
-    width: 100%; /* Ensure container takes full width of parent */
-    box-sizing: border-box; /* Include padding/border in element's total width */
-}
-.reupload-input-container input[type="file"] {
-    font-size: 0.85rem;
-    padding: 5px;
-    /* --- ADD THESE NEW STYLES --- */
-    width: 100%; /* Make input fill its parent container */
-    box-sizing: border-box;
-    max-width: 100%; /* Crucial to prevent overshooting */
-}
-.reupload-input-container button {
-    background-color: #17a2b8;
-    color: white;
-    border: none;
-    padding: 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.8rem;
-    /* --- ADD THESE NEW STYLES --- */
-    width: 100%; /* Make button fill its parent container */
-    box-sizing: border-box;
-    max-width: 100%; /* Ensure it doesn't overshoot */
-}
-.reupload-input-container button:hover {
-    background-color: #138496;
-}
             .reupload-input-container {
                 margin-top: 10px;
                 display: flex;
@@ -397,10 +402,15 @@ def index():
                 gap: 5px;
                 border-top: 1px solid #eee;
                 padding-top: 10px;
+                width: 100%;
+                box-sizing: border-box;
             }
             .reupload-input-container input[type="file"] {
                 font-size: 0.85rem;
                 padding: 5px;
+                width: 100%;
+                box-sizing: border-box;
+                max-width: 100%;
             }
             .reupload-input-container button {
                 background-color: #17a2b8;
@@ -410,6 +420,9 @@ def index():
                 border-radius: 4px;
                 cursor: pointer;
                 font-size: 0.8rem;
+                width: 100%;
+                box-sizing: border-box;
+                max-width: 100%;
             }
             .reupload-input-container button:hover {
                 background-color: #138496;
@@ -442,22 +455,22 @@ def index():
             // Function to display messages to the user
             function showMessage(msg, type = 'info') {
                 uploadMessage.textContent = msg;
-                uploadMessage.className = ``; // Clear previous classes
+                uploadMessage.className = ``;
                 uploadMessage.classList.add(type);
                 uploadMessage.style.display = 'block';
-                setTimeout(() => { uploadMessage.style.display = 'none'; }, 5000); // Hide after 5 seconds
+                setTimeout(() => { uploadMessage.style.display = 'none'; }, 5000);
             }
 
             // Function to fetch and display logos
             async function fetchLogos() {
                 try {
-                    logoGallery.innerHTML = '<p>Loading logos...</p>'; // Show loading state
+                    logoGallery.innerHTML = '<p>Loading logos...</p>';
                     const response = await fetch('/api/logos');
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
                     const logos = await response.json();
-                    logoGallery.innerHTML = ''; // Clear previous content
+                    logoGallery.innerHTML = '';
 
                     if (logos.length === 0) {
                         logoGallery.innerHTML = '<p>No logos uploaded yet. Upload one or more using the form above!</p>';
@@ -477,8 +490,10 @@ def index():
                             </div>
                             <div class="actions">
                                 <button class="action-btn copy-btn" data-url="${logo.url}">Copy Link</button>
-                                <button class="action-btn reupload-trigger-btn" data-id="${logo.id}">Reupload</button>
+                                <button class="action-btn reupload reupload-trigger-btn" data-id="${logo.id}">Reupload</button>
                                 <button class="action-btn delete delete-btn" data-id="${logo.id}" data-filename="${logo.original_name}">Delete</button>
+                                <button class="action-btn download-png" data-id="${logo.id}" data-original-name="${logo.original_name}">Download PNG</button>
+                                <button class="action-btn download-webp" data-id="${logo.id}" data-original-name="${logo.original_name}">Download WebP</button>
                             </div>
                             <div class="reupload-input-container" style="display:none;" data-id="${logo.id}">
                                 <input type="file" class="reupload-file-input" accept="image/*" data-id="${logo.id}">
@@ -488,22 +503,19 @@ def index():
                         logoGallery.appendChild(logoItem);
                     });
 
-                    attachEventListeners(); // Attach event listeners after rendering
+                    attachEventListeners();
                 } catch (error) {
                     console.error('Error fetching logos:', error);
                     logoGallery.innerHTML = '<p style="color: red;">Error loading logos. Please check server logs.</p>';
                 }
             }
 
-            // Central function to attach all dynamic event listeners
             function attachEventListeners() {
-                // Copy Link Buttons - UPDATED LOGIC HERE
                 document.querySelectorAll('.copy-btn').forEach(button => {
                     button.onclick = async () => {
                         const urlToCopy = button.dataset.url;
                         let copiedSuccessfully = false;
 
-                        // --- Attempt modern Clipboard API first ---
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             try {
                                 await navigator.clipboard.writeText(urlToCopy);
@@ -511,11 +523,9 @@ def index():
                                 console.log('Copied using modern Clipboard API:', urlToCopy);
                             } catch (err) {
                                 console.error('Failed to copy using modern Clipboard API:', err);
-                                // Fallback to execCommand if modern API fails (e.g., permissions)
                             }
                         }
 
-                        // --- Fallback to deprecated document.execCommand('copy') if modern API failed or not available ---
                         if (!copiedSuccessfully) {
                             const inputElement = button.parentElement.querySelector('.url-input');
                             let tempTextArea = null;
@@ -523,7 +533,7 @@ def index():
                             const elementToSelect = inputElement || (tempTextArea = document.createElement('textarea'));
                             if (tempTextArea) {
                                 tempTextArea.value = urlToCopy;
-                                tempTextArea.style.position = 'fixed'; // Hide off-screen
+                                tempTextArea.style.position = 'fixed';
                                 tempTextArea.style.top = '0';
                                 tempTextArea.style.left = '0';
                                 tempTextArea.style.opacity = '0';
@@ -532,7 +542,7 @@ def index():
 
                             try {
                                 elementToSelect.select();
-                                elementToSelect.setSelectionRange(0, 99999); // For mobile devices
+                                elementToSelect.setSelectionRange(0, 99999);
                                 copiedSuccessfully = document.execCommand('copy');
                                 console.log('Copied using document.execCommand:', copiedSuccessfully);
                             } catch (execErr) {
@@ -548,7 +558,6 @@ def index():
                             button.textContent = 'Copied!';
                             setTimeout(() => { button.textContent = 'Copy Link'; }, 2000);
                         } else {
-                            // If all copy attempts failed
                             alert('Failed to copy URL automatically. Please manually select and copy: ' + urlToCopy);
                             button.textContent = 'Copy Failed!';
                             setTimeout(() => { button.textContent = 'Copy Link'; }, 2000);
@@ -556,7 +565,6 @@ def index():
                     };
                 });
 
-                // Reupload Trigger Buttons
                 document.querySelectorAll('.reupload-trigger-btn').forEach(button => {
                     button.onclick = () => {
                         const id = button.dataset.id;
@@ -567,7 +575,6 @@ def index():
                     };
                 });
 
-                // Reupload Submit Buttons
                 document.querySelectorAll('.reupload-submit-btn').forEach(button => {
                     button.onclick = async () => {
                         const id = button.dataset.id;
@@ -581,7 +588,7 @@ def index():
                         const file = fileInput.files[0];
                         const formData = new FormData();
                         formData.append('file', file);
-                        formData.append('replace_id', id); // Pass the ID to replace
+                        formData.append('replace_id', id);
 
                         showMessage(`Reuploading logo ID ${id}...`, 'info');
                         try {
@@ -593,9 +600,9 @@ def index():
 
                             if (response.ok) {
                                 showMessage(`Reupload success for ID ${id}.`, 'success');
-                                fetchLogos(); // Refresh the gallery
+                                fetchLogos();
                             } else {
-                                const errorMsg = data.error || (data.length && data[0] && data[0].error) || 'Unknown error during reupload.';
+                                const errorMsg = data.error || (Array.isArray(data) && data[0] && data[0].error) || 'Unknown error during reupload.';
                                 showMessage(`Reupload failed for ID ${id}: ${errorMsg}`, 'error');
                             }
                         } catch (error) {
@@ -605,7 +612,6 @@ def index():
                     };
                 });
 
-                // Delete Buttons
                 document.querySelectorAll('.delete-btn').forEach(button => {
                     button.onclick = async () => {
                         const id = button.dataset.id;
@@ -620,7 +626,7 @@ def index():
 
                                 if (response.ok) {
                                     showMessage(`Deleted logo ID ${id}.`, 'success');
-                                    fetchLogos(); // Refresh the gallery
+                                    fetchLogos();
                                 } else {
                                     showMessage(`Delete failed for ID ${id}: ${data.error || 'Unknown error'}`, 'error');
                                 }
@@ -631,10 +637,26 @@ def index():
                         }
                     };
                 });
+
+                // --- NEW: Download PNG Button ---
+                document.querySelectorAll('.download-png').forEach(button => {
+                    button.onclick = () => {
+                        const id = button.dataset.id;
+                        // Trigger download by setting window.location.href
+                        window.location.href = `/download/${id}/png`;
+                    };
+                });
+
+                // --- NEW: Download WebP Button ---
+                document.querySelectorAll('.download-webp').forEach(button => {
+                    button.onclick = () => {
+                        const id = button.dataset.id;
+                        // Trigger download by setting window.location.href
+                        window.location.href = `/download/${id}/webp`;
+                    };
+                });
             }
 
-
-            // Handle main file upload form submission (for multiple files)
             uploadForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
 
@@ -644,7 +666,6 @@ def index():
                 }
 
                 const formData = new FormData();
-                // Append all selected files to the FormData object
                 for (let i = 0; i < fileInput.files.length; i++) {
                     formData.append('file', fileInput.files[i]);
                 }
@@ -658,7 +679,6 @@ def index():
                     const data = await response.json();
 
                     if (response.ok) {
-                        // Handle success messages for single or multiple uploads
                         if (Array.isArray(data)) {
                             const successCount = data.filter(r => r.message).length;
                             const errorCount = data.filter(r => r.error).length;
@@ -666,10 +686,9 @@ def index():
                         } else {
                             showMessage(`Success: ${data.message} (ID: ${data.id})`, 'success');
                         }
-                        fileInput.value = ''; // Clear file input
-                        fetchLogos(); // Refresh the logo list
+                        fileInput.value = '';
+                        fetchLogos();
                     } else {
-                        // Handle error messages for single or multiple uploads
                         let errorMsg = 'Unknown error during upload.';
                         if (data && data.error) {
                             errorMsg = data.error;
@@ -684,7 +703,6 @@ def index():
                 }
             });
 
-            // Initial load of logos when the page loads
             document.addEventListener('DOMContentLoaded', fetchLogos);
         </script>
     </body>
