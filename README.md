@@ -27,11 +27,11 @@ The easiest way to get started is by pulling the pre-built Docker image from Doc
 
 1. Create a Docker Volume (once):  
   This volume will store your uploaded logos and application data persistently, even if the container is removed.  
-  docker volume create tv-logo-data
+  ```docker volume create tv-logo-data```
   
 2. Run the Docker Container:  
   Use the following command to start the TV Logo Manager container in detached mode, with automatic restart, a specific name, port mapping, and data persistence via the Docker volume:  
-  docker run \-d \--restart unless-stopped \--name logo-manager \-p 8084:8084 \-v tv-logo-data:/app/data rcvaughn2/tv-logo-manager
+  ```docker run \-d \--restart unless-stopped \--name logo-manager \-p 8084:8084 \-v tv-logo-data:/app/data rcvaughn2/tv-logo-manager```
   
   - \-d: Runs the container in **detached mode** (in the background).
   - \--restart unless-stopped: The container will automatically restart unless it's explicitly stopped or Docker is stopped.
