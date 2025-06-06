@@ -1,12 +1,10 @@
-
-
 # tv-logo-manager/app.py
 from flask import Flask, request, send_from_directory, jsonify, redirect, send_file, Response
 import os
 from werkzeug.utils import secure_filename
 import json
-from PIL import Image, ImageOps # Import ImageOps for padding/cropping
-import io # Required for in-memory image processing
+from PIL import Image, ImageOps
+import io
 
 app = Flask(__name__)
 
@@ -24,7 +22,7 @@ def load_logos():
     with open(DB_FILE, 'r') as f:
         try:
             return json.load(f)
-        except json.JSONDecodeError: # Handle empty or corrupt JSON
+        except json.JSONDecodeError:
             return []
 
 def save_logos(logos):
@@ -41,15 +39,12 @@ def process_logo_image_to_webp(image_path):
     3. Resizes to a standard dimension (200x150 pixels).
     4. Returns the processed PIL Image object.
     """
-    img = Image.open(image_path).convert("RGBA") # Ensure transparency support
+    img = Image.open(image_path).convert("RGBA")
 
-    target_width = 200 # Desired final width
-    target_height = 150 # Desired final height (200 * 3/4 = 150)
+    target_width = 200
+    target_height = 150
     target_size = (target_width, target_height)
 
-    # Use ImageOps.pad to add transparent padding
-    # color=(0,0,0,0) specifies transparent black for padding
-    # centering=(0.5, 0.5) centers the image within the new padded canvas
     padded_img = ImageOps.pad(img, target_size, color=(0,0,0,0), centering=(0.5, 0.5))
 
     return padded_img
@@ -59,14 +54,13 @@ def process_logo_image_to_webp(image_path):
 @app.route('/upload', methods=['POST'])
 def upload_file():
     """
-    Handles image uploads (single or multiple).
-    If 'replace_id' is provided, it replaces an existing image.
+    Handles new image uploads (single or multiple).
+    The 'reupload' functionality is removed, this endpoint only adds new images.
     """
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
 
-    uploaded_files = request.files.getlist('file') # Get list of files for multiple uploads
-    replace_id_str = request.form.get('replace_id') # Get replace_id if present
+    uploaded_files = request.files.getlist('file')
 
     if not uploaded_files:
         return jsonify({"error": "No files selected"}), 400
@@ -75,7 +69,7 @@ def upload_file():
     for file in uploaded_files:
         if file.filename == '':
             results.append({"error": "Empty filename in multi-upload."})
-            continue # Skip empty files
+            continue
 
         original_filename = secure_filename(file.filename)
         temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], "temp_" + original_filename)
@@ -93,39 +87,11 @@ def upload_file():
 
             logos = load_logos()
             
-            if replace_id_str: # If replacing an existing image
-                try:
-                    replace_id = int(replace_id_str)
-                    found_index = -1
-                    for i, logo in enumerate(logos):
-                        if logo['id'] == replace_id:
-                            found_index = i
-                            break
-                    
-                    if found_index != -1:
-                        # Delete old file
-                        old_filename = logos[found_index]['filename']
-                        old_filepath = os.path.join(app.config['UPLOAD_FOLDER'], old_filename)
-                        if os.path.exists(old_filepath):
-                            os.remove(old_filepath)
-                        
-                        # Update entry
-                        logos[found_index]['filename'] = processed_filename
-                        logos[found_index]['original_name'] = original_filename # Update original name too
-                        save_logos(logos)
-                        results.append({"message": f"Logo ID {replace_id} re-uploaded successfully.", "id": replace_id, "filename": processed_filename})
-                    else:
-                        results.append({"error": f"Replace ID {replace_id} not found."})
-                except ValueError:
-                    results.append({"error": "Invalid replace ID."})
-                except Exception as e:
-                    results.append({"error": f"Error during re-upload for ID {replace_id}: {e}"})
-            else: # New upload
-                # Generate a new unique ID based on the max existing ID + 1
-                new_id = max([l['id'] for l in logos]) + 1 if logos else 1
-                logos.append({"id": new_id, "filename": processed_filename, "original_name": original_filename})
-                save_logos(logos)
-                results.append({"message": "File uploaded and processed", "id": new_id, "filename": processed_filename})
+            # Always generate a new unique ID for new uploads
+            new_id = max([l['id'] for l in logos]) + 1 if logos else 1
+            logos.append({"id": new_id, "filename": processed_filename, "original_name": original_filename})
+            save_logos(logos)
+            results.append({"message": "File uploaded and processed", "id": new_id, "filename": processed_filename})
 
         except Exception as e:
             if os.path.exists(temp_filepath):
@@ -134,19 +100,22 @@ def upload_file():
             results.append({"error": f"Image processing failed for {original_filename}: {e}"})
 
     # Return appropriate response for single or multiple uploads
-    if len(results) == 1 and not replace_id_str:
+    if len(results) == 1: # If only one file uploaded, return single response
         if "error" in results[0]:
             return jsonify(results[0]), 500
         return jsonify(results[0]), 200
-    else: # Multi-upload or re-upload case
-        # Check if all results contain errors
+    else: # Multi-upload case
         all_errors = all("error" in r for r in results)
         status_code = 500 if all_errors else 200
         return jsonify(results), status_code
 
+
 @app.route('/images', methods=['GET'])
 def get_image():
-    """Serves an individual WebP image by its ID."""
+    """
+    Serves an individual WebP image by its ID.
+    Sets 'no-cache' headers to force browser revalidation.
+    """
     image_id = request.args.get('id')
     if not image_id:
         return jsonify({"error": "Missing image ID"}), 400
@@ -155,8 +124,16 @@ def get_image():
     logo = next((l for l in logos if str(l['id']) == image_id), None)
 
     if logo:
-        return send_from_directory(app.config['UPLOAD_FOLDER'], logo['filename'],
-                                   mimetype='image/webp', max_age=31536000) # Using max_age
+        response = send_from_directory(
+            app.config['UPLOAD_FOLDER'],
+            logo['filename'],
+            mimetype='image/webp'
+        )
+        # Set Cache-Control headers to no-cache to force browser revalidation
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     return jsonify({"error": "Image not found"}), 404
 
 @app.route('/api/logos', methods=['GET'])
@@ -165,9 +142,12 @@ def list_logos():
     logos = load_logos()
     logo_list = []
     # Sort logos by ID for consistent display order
-    sorted_logos = sorted(logos, key=lambda x: x['id'])
+    sorted_logos = sorted(logos, key=lambda x: x.get('id', 0)) # Use .get with default for robustness
     for logo in sorted_logos:
-        image_url = f"http://{request.host}/images?id={logo['id']}"
+        # Use the filename (which contains a unique hash) as a cache-buster
+        cache_buster = logo['filename'].split('_')[-1].split('.')[0] # Extracts the random hash
+        image_url = f"http://{request.host}/images?id={logo['id']}&_cb={cache_buster}"
+
         logo_list.append({
             "id": logo['id'],
             "filename": logo['filename'],
@@ -383,18 +363,20 @@ def index():
                 border-radius: 4px;
                 font-size: 0.85rem;
                 transition: background-color 0.2s ease;
-                flex-grow: 1; /* Allow buttons to grow */
-                min-width: 0; /* Ensure buttons can shrink in flex-wrap */
+                flex-grow: 1;
+                min-width: 0;
             }
             .action-btn.delete { background-color: #dc3545; }
-            .action-btn.reupload { background-color: #ffc107; color: #333; }
-            .action-btn.download-png { background-color: #6c757d; } /* Grey for PNG */
-            .action-btn.download-webp { background-color: #17a2b8; } /* Teal for WebP */
+            /* .action-btn.reupload { background-color: #ffc107; color: #333; } */ /* Removed reupload styling */
+            .action-btn.download-png { background-color: #6c757d; }
+            .action-btn.download-webp { background-color: #17a2b8; }
 
 
             .action-btn:hover { filter: brightness(1.1); }
             .action-btn:active { filter: brightness(0.9); }
 
+            /* Reupload Specific UI (removed from HTML structure, but keeping styling commented out) */
+            /*
             .reupload-input-container {
                 margin-top: 10px;
                 display: flex;
@@ -427,6 +409,7 @@ def index():
             .reupload-input-container button:hover {
                 background-color: #138496;
             }
+            */
         </style>
     </head>
     <body>
@@ -452,7 +435,6 @@ def index():
             const uploadMessage = document.getElementById('uploadMessage');
             const logoGallery = document.getElementById('logoGallery');
 
-            // Function to display messages to the user
             function showMessage(msg, type = 'info') {
                 uploadMessage.textContent = msg;
                 uploadMessage.className = ``;
@@ -461,7 +443,6 @@ def index():
                 setTimeout(() => { uploadMessage.style.display = 'none'; }, 5000);
             }
 
-            // Function to fetch and display logos
             async function fetchLogos() {
                 try {
                     logoGallery.innerHTML = '<p>Loading logos...</p>';
@@ -478,27 +459,26 @@ def index():
                     }
 
                     logos.forEach(logo => {
+                        const displayUrl = logo.url;
+
                         const logoItem = document.createElement('div');
                         logoItem.className = 'logo-item';
                         logoItem.innerHTML = `
-                            <img src="${logo.url}" alt="Logo ID: ${logo.id}" loading="lazy">
+                            <img src="${displayUrl}" alt="Logo ID: ${logo.id}" loading="lazy">
                             <div class="logo-details">
                                 <p><strong>ID:</strong> ${logo.id}</p>
                                 <p><strong>Original Name:</strong> ${logo.original_name}</p>
                                 <p><strong>Processed Name:</strong> ${logo.filename}</p>
-                                <p><strong>Direct URL:</strong> <input type="text" value="${logo.url}" readonly class="url-input"></p>
+                                <p><strong>Direct URL:</strong> <input type="text" value="${displayUrl}" readonly class="url-input"></p>
                             </div>
                             <div class="actions">
-                                <button class="action-btn copy-btn" data-url="${logo.url}">Copy Link</button>
-                                <button class="action-btn reupload reupload-trigger-btn" data-id="${logo.id}">Reupload</button>
+                                <button class="action-btn copy-btn" data-url="${displayUrl}">Copy Link</button>
+                                <!-- Reupload button removed -->
                                 <button class="action-btn delete delete-btn" data-id="${logo.id}" data-filename="${logo.original_name}">Delete</button>
                                 <button class="action-btn download-png" data-id="${logo.id}" data-original-name="${logo.original_name}">Download PNG</button>
                                 <button class="action-btn download-webp" data-id="${logo.id}" data-original-name="${logo.original_name}">Download WebP</button>
                             </div>
-                            <div class="reupload-input-container" style="display:none;" data-id="${logo.id}">
-                                <input type="file" class="reupload-file-input" accept="image/*" data-id="${logo.id}">
-                                <button class="reupload-submit-btn" data-id="${logo.id}">Confirm Reupload</button>
-                            </div>
+                            <!-- Reupload input container removed -->
                         `;
                         logoGallery.appendChild(logoItem);
                     });
@@ -565,52 +545,11 @@ def index():
                     };
                 });
 
-                document.querySelectorAll('.reupload-trigger-btn').forEach(button => {
-                    button.onclick = () => {
-                        const id = button.dataset.id;
-                        const container = document.querySelector(`.reupload-input-container[data-id="${id}"]`);
-                        if (container) {
-                            container.style.display = container.style.display === 'none' ? 'flex' : 'none';
-                        }
-                    };
-                });
-
-                document.querySelectorAll('.reupload-submit-btn').forEach(button => {
-                    button.onclick = async () => {
-                        const id = button.dataset.id;
-                        const fileInput = document.querySelector(`.reupload-file-input[data-id="${id}"]`);
-                        
-                        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-                            showMessage('Please select a file for reupload.', 'error');
-                            return;
-                        }
-
-                        const file = fileInput.files[0];
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        formData.append('replace_id', id);
-
-                        showMessage(`Reuploading logo ID ${id}...`, 'info');
-                        try {
-                            const response = await fetch('/upload', {
-                                method: 'POST',
-                                body: formData
-                            });
-                            const data = await response.json();
-
-                            if (response.ok) {
-                                showMessage(`Reupload success for ID ${id}.`, 'success');
-                                fetchLogos();
-                            } else {
-                                const errorMsg = data.error || (Array.isArray(data) && data[0] && data[0].error) || 'Unknown error during reupload.';
-                                showMessage(`Reupload failed for ID ${id}: ${errorMsg}`, 'error');
-                            }
-                        } catch (error) {
-                            console.error('Reupload failed:', error);
-                            showMessage(`Reupload failed for ID ${id}: ${error.message}.`, 'error');
-                        }
-                    };
-                });
+                // Reupload trigger and submit buttons removed
+                /*
+                document.querySelectorAll('.reupload-trigger-btn').forEach(button => { ... });
+                document.querySelectorAll('.reupload-submit-btn').forEach(button => { ... });
+                */
 
                 document.querySelectorAll('.delete-btn').forEach(button => {
                     button.onclick = async () => {
@@ -638,20 +577,16 @@ def index():
                     };
                 });
 
-                // --- NEW: Download PNG Button ---
                 document.querySelectorAll('.download-png').forEach(button => {
                     button.onclick = () => {
                         const id = button.dataset.id;
-                        // Trigger download by setting window.location.href
                         window.location.href = `/download/${id}/png`;
                     };
                 });
 
-                // --- NEW: Download WebP Button ---
                 document.querySelectorAll('.download-webp').forEach(button => {
                     button.onclick = () => {
                         const id = button.dataset.id;
-                        // Trigger download by setting window.location.href
                         window.location.href = `/download/${id}/webp`;
                     };
                 });
