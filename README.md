@@ -56,17 +56,18 @@ The TV Logo Manager is an excellent companion for Channels DVR, allowing you to 
 
 1. **Prepare & Download the PNG Logo:**  
    * **Upload** your original logo image to the TV Logo Manager via its web interface (http://localhost:8084). The manager will automatically process it to the **4:3 aspect ratio** and optimize it.  
-   * Locate the newly uploaded logo in the gallery and click the **"Download PNG"** button. This will download the processed image in a format Channels DVR prefers.  
-2. **Upload to Channels DVR Art Editor:**  
+   * Locate the newly uploaded logo in the gallery and click the **"Download PNG"** button. This will download the processed image, typically named based on its original filename (e.g., MyChannelLogo.png), which is the format Channels DVR prefers.  
+2. **Upload to Channels DVR Image Manager:**  
    * Open your Channels DVR web interface (typically http://\<Channels\_DVR\_IP\>:8089/admin).  
-   * Navigate to **Settings** (gear icon) \-\> **DVR** \-\> **Channel Surfing** \-\> **Art Editor**.  
-   * Click the **"Upload Image"** button and select the PNG file you downloaded in Step 1\.  
-   * After the upload, Channels DVR will display the image and provide its internal URL. This URL typically looks like /dvr/uploads/\[YOUR IMAGE NUMBER\]/content. **Make a note of the \[YOUR IMAGE NUMBER\] portion.**  
+   * Navigate to **DVR** \-\> **Manage** \-\> **Images**.  
+   * Click the **"Upload Image"** option.  
+   * Select the PNG file you downloaded in Step 1 from your computer and upload it.  
+   * After the upload, Channels DVR will display the image and provide its internal URL in the Image Manager. This URL typically looks like /dvr/uploads/\[YOUR IMAGE ID\]/content or similar. **Make a note of the exact URL Channels DVR generates for your image.**  
 3. **Use the Internal Link in Your M3U8 Playlist:**  
    * In your custom M3U8 playlist, use the internal Channels DVR URL format for the tvg-logo attribute. This ensures Channels DVR serves the logo directly from its own server, which is generally more stable for its internal operations.  
    * **Example M3U8 Entry:**  
-     `#EXTINF:-1 tvg-id="MyChannel" tvg-logo="/dvr/uploads/YOUR_IMAGE_NUMBER/content" group-title="My Group",My Awesome Channel`  
-     (Replace YOUR\_IMAGE\_NUMBER with the actual number Channels DVR provided after your upload).
+     `#EXTINF:-1 tvg-id="MyChannel" tvg-logo="/dvr/uploads/YOUR_IMAGE_ID/content" group-title="My Group",My Awesome Channel`  
+     (Replace YOUR\_IMAGE\_ID with the actual ID or path segment Channels DVR provided for your uploaded logo).
 
 This workflow ensures your logos are perfectly sized and formatted for Channels DVR while leveraging its native image hosting.
 
