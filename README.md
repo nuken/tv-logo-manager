@@ -50,6 +50,26 @@ http://localhost:8084
 
 3. You should see the TV Logo Manager interface ready for you to upload and manage your logos\!
   
+## **📺 Integrating with Channels DVR**
+
+The TV Logo Manager is an excellent companion for Channels DVR, allowing you to easily process and prepare logo images for use in your custom M3U8 playlists. Since Channels DVR manages its own image hosting, this process involves two steps: preparing the image with the TV Logo Manager, and then uploading it to Channels DVR.
+
+1. **Prepare & Download the PNG Logo:**  
+   * **Upload** your original logo image to the TV Logo Manager via its web interface (http://localhost:8084). The manager will automatically process it to the **4:3 aspect ratio** and optimize it.  
+   * Locate the newly uploaded logo in the gallery and click the **"Download PNG"** button. This will download the processed image in a format Channels DVR prefers.  
+2. **Upload to Channels DVR Art Editor:**  
+   * Open your Channels DVR web interface (typically http://\<Channels\_DVR\_IP\>:8089/admin).  
+   * Navigate to **Settings** (gear icon) \-\> **DVR** \-\> **Channel Surfing** \-\> **Art Editor**.  
+   * Click the **"Upload Image"** button and select the PNG file you downloaded in Step 1\.  
+   * After the upload, Channels DVR will display the image and provide its internal URL. This URL typically looks like /dvr/uploads/\[YOUR IMAGE NUMBER\]/content. **Make a note of the \[YOUR IMAGE NUMBER\] portion.**  
+3. **Use the Internal Link in Your M3U8 Playlist:**  
+   * In your custom M3U8 playlist, use the internal Channels DVR URL format for the tvg-logo attribute. This ensures Channels DVR serves the logo directly from its own server, which is generally more stable for its internal operations.  
+   * **Example M3U8 Entry:**  
+     `#EXTINF:-1 tvg-id="MyChannel" tvg-logo="/dvr/uploads/YOUR_IMAGE_NUMBER/content" group-title="My Group",My Awesome Channel`  
+     (Replace YOUR\_IMAGE\_NUMBER with the actual number Channels DVR provided after your upload).
+
+This workflow ensures your logos are perfectly sized and formatted for Channels DVR while leveraging its native image hosting.
+
 
 ## **🔒 Remote Access with Tailscale**
 
