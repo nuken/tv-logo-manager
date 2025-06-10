@@ -35,7 +35,7 @@ docker volume create tv-logo-data
 1. **Run the Docker Container:** Use the following command to start the TV Logo Manager container in detached mode, with automatic restart, a specific name, port mapping, and data persistence via the Docker volume:  
  
   ```
-  docker run \-d \--restart unless-stopped \--name logo-manager \-p 8084:8084 \-v tv-logo-data:/app/data rcvaughn2/tv-logo-manager
+  docker run -d --restart unless-stopped --name logo-manager -p 8084:8084 -v tv-logo-data:/app/data rcvaughn2/tv-logo-manager
   ```
   
 2. - `-d`: Runs the container in **detached mode** (in the background).
