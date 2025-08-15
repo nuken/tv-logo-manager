@@ -5,7 +5,7 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
 ## **✨ Features**
 
 - **Effortless Uploads:** Easily upload single or multiple image files through a user-friendly web interface.
-- **Automated Image Processing:** All uploaded images are automatically **resized to a consistent 4:3 aspect ratio** (using padding to ensure no part of your logo is ever cut off) and converted to highly optimized **WebP format** for superior performance and reduced storage footprint.
+- **Automated Image Processing:** All uploaded images are automatically **resized to a consistent 4:3 aspect ratio 720x540px** (using padding to ensure no part of your logo is ever cut off) and converted to highly optimized **WebP format** for superior performance and reduced storage footprint.
 - **Interactive Logo Gallery:** View all your uploaded logos in a clean, responsive grid layout directly within the web interface.
 - **Direct Access Links:** Each logo in the gallery provides an easy-to-copy direct URL (`http://<docker_ip>:8084/images?id=XXX`), perfect for integrating with your M3U8 playlists.
 - **Download Options:** **Download your processed logos in either WebP or universally compatible PNG formats** with a single click.
