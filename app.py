@@ -36,13 +36,13 @@ def process_logo_image_to_webp(image_path):
     Processes an image:
     1. Ensures it has an alpha channel (for transparency).
     2. Enforces a 4:3 aspect ratio using padding (letterboxing/pillarboxing).
-    3. Resizes to a standard dimension (200x150 pixels).
+    3. Resizes to a standard dimension (720x540 pixels).
     4. Returns the processed PIL Image object.
     """
     img = Image.open(image_path).convert("RGBA")
 
-    target_width = 200
-    target_height = 150
+    target_width = 720
+    target_height = 450
     target_size = (target_width, target_height)
 
     padded_img = ImageOps.pad(img, target_size, color=(0,0,0,0), centering=(0.5, 0.5))
