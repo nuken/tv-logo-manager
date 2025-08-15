@@ -42,7 +42,7 @@ def process_logo_image_to_webp(image_path):
     img = Image.open(image_path).convert("RGBA")
 
     target_width = 720
-    target_height = 450
+    target_height = 540
     target_size = (target_width, target_height)
 
     padded_img = ImageOps.pad(img, target_size, color=(0,0,0,0), centering=(0.5, 0.5))
