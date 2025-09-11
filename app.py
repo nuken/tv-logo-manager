@@ -1,18 +1,24 @@
 # tv-logo-manager/app.py
-from flask import Flask, request, send_from_directory, jsonify, redirect, send_file, Response
+from flask import Flask, request, send_from_directory, jsonify, redirect, send_file, Response, session, url_for
 import os
 from werkzeug.utils import secure_filename
 import json
 from PIL import Image, ImageOps
 import io
+from imgurpython import ImgurClient
 
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
 # Configuration for image uploads and data storage
 UPLOAD_FOLDER = 'data/images'
 DB_FILE = 'data/logos.json'
+IMGUR_CLIENT_ID = 'YOUR_CLIENT_ID'  # Replace with your Imgur client ID
+IMGUR_CLIENT_SECRET = 'YOUR_CLIENT_SECRET'  # Replace with your Imgur client secret
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+imgur_client = ImgurClient(IMGUR_CLIENT_ID, IMGUR_CLIENT_SECRET)
 
 # --- Helper Functions for Data Storage (Simple JSON DB) ---
 def load_logos():
@@ -51,12 +57,30 @@ def process_logo_image_to_webp(image_path):
 
 # --- Flask Routes ---
 
+@app.route('/imgur_auth')
+def imgur_auth():
+    """Redirects the user to Imgur for authentication."""
+    authorization_url = imgur_client.get_auth_url('code')
+    return redirect(authorization_url)
+
+@app.route('/imgur_callback')
+def imgur_callback():
+    """Handles the callback from Imgur after authentication."""
+    code = request.args.get('code')
+    credentials = imgur_client.authorize(code, 'authorization_code')
+    imgur_client.set_user_auth(credentials['access_token'], credentials['refresh_token'])
+    session['imgur_credentials'] = credentials
+    return redirect(url_for('index'))
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     """
     Handles new image uploads (single or multiple).
     The 'reupload' functionality is removed, this endpoint only adds new images.
     """
+    if 'imgur_credentials' not in session:
+        return jsonify({"error": "Please login to Imgur first"}), 401
+
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
 
@@ -76,22 +100,17 @@ def upload_file():
         file.save(temp_filepath)
 
         try:
-            processed_img = process_logo_image_to_webp(temp_filepath)
-
-            base_name = os.path.splitext(original_filename)[0]
-            processed_filename = f"{base_name}_{os.urandom(4).hex()}.webp" # Unique filename
-            output_filepath = os.path.join(app.config['UPLOAD_FOLDER'], processed_filename)
-
-            processed_img.save(output_filepath, 'WEBP', lossless=True)
-            os.remove(temp_filepath) # Remove temporary file
+            # Upload to Imgur
+            imgur_image = imgur_client.upload_from_path(temp_filepath, config=None, anon=False)
+            os.remove(temp_filepath)  # Remove temporary file
 
             logos = load_logos()
             
             # Always generate a new unique ID for new uploads
             new_id = max([l['id'] for l in logos]) + 1 if logos else 1
-            logos.append({"id": new_id, "filename": processed_filename, "original_name": original_filename})
+            logos.append({"id": new_id, "filename": original_filename, "original_name": original_filename, "url": imgur_image['link'], "deletehash": imgur_image['deletehash']})
             save_logos(logos)
-            results.append({"message": "File uploaded and processed", "id": new_id, "filename": processed_filename})
+            results.append({"message": "File uploaded and processed", "id": new_id, "filename": original_filename, "url": imgur_image['link']})
 
         except Exception as e:
             if os.path.exists(temp_filepath):
@@ -113,8 +132,7 @@ def upload_file():
 @app.route('/images', methods=['GET'])
 def get_image():
     """
-    Serves an individual WebP image by its ID.
-    Sets 'no-cache' headers to force browser revalidation.
+    Redirects to the Imgur URL for the image.
     """
     image_id = request.args.get('id')
     if not image_id:
@@ -123,18 +141,10 @@ def get_image():
     logos = load_logos()
     logo = next((l for l in logos if str(l['id']) == image_id), None)
 
-    if logo:
-        response = send_from_directory(
-            app.config['UPLOAD_FOLDER'],
-            logo['filename'],
-            mimetype='image/webp'
-        )
-        # Set Cache-Control headers to no-cache to force browser revalidation
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
-        return response
-    return jsonify({"error": "Image not found"}), 404
+    if logo and 'url' in logo:
+        return redirect(logo['url'])
+    
+    return jsonify({"error": "Image not found or no Imgur URL"}), 404
 
 @app.route('/api/logos', methods=['GET'])
 def list_logos():
@@ -144,21 +154,20 @@ def list_logos():
     # Sort logos by ID for consistent display order
     sorted_logos = sorted(logos, key=lambda x: x.get('id', 0)) # Use .get with default for robustness
     for logo in sorted_logos:
-        # Use the filename (which contains a unique hash) as a cache-buster
-        cache_buster = logo['filename'].split('_')[-1].split('.')[0] # Extracts the random hash
-        image_url = f"http://{request.host}/images?id={logo['id']}&_cb={cache_buster}"
-
         logo_list.append({
             "id": logo['id'],
             "filename": logo['filename'],
             "original_name": logo['original_name'],
-            "url": image_url
+            "url": logo.get('url', '')
         })
     return jsonify(logo_list)
 
 @app.route('/api/logos/<int:logo_id>', methods=['DELETE'])
 def delete_logo(logo_id):
     """Deletes a logo by its ID."""
+    if 'imgur_credentials' not in session:
+        return jsonify({"error": "Please login to Imgur first"}), 401
+    
     logos = load_logos()
     initial_len = len(logos)
     
@@ -169,6 +178,13 @@ def delete_logo(logo_id):
         # Find the filename of the deleted logo to remove its file
         deleted_logo = next((logo for logo in logos if logo['id'] == logo_id), None)
         if deleted_logo:
+            # Delete from Imgur
+            if 'deletehash' in deleted_logo:
+                try:
+                    imgur_client.delete_image(deleted_logo['deletehash'])
+                except Exception as e:
+                    app.logger.error(f"Failed to delete image from Imgur: {e}")
+
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], deleted_logo['filename'])
             if os.path.exists(filepath):
                 os.remove(filepath)
@@ -273,7 +289,7 @@ def index():
                 border: 1px solid #ccc;
                 border-radius: 4px;
             }
-            input[type="submit"] {
+            input[type="submit"], .auth-btn {
                 background-color: #3498db;
                 color: white;
                 border: none;
@@ -282,8 +298,10 @@ def index():
                 cursor: pointer;
                 font-size: 1rem;
                 transition: background-color 0.2s ease;
+                text-decoration: none;
+                text-align: center;
             }
-            input[type="submit"]:hover {
+            input[type="submit"]:hover, .auth-btn:hover {
                 background-color: #2980b9;
             }
             #uploadMessage {
@@ -367,54 +385,19 @@ def index():
                 min-width: 0;
             }
             .action-btn.delete { background-color: #dc3545; }
-            /* .action-btn.reupload { background-color: #ffc107; color: #333; } */ /* Removed reupload styling */
             .action-btn.download-png { background-color: #6c757d; }
             .action-btn.download-webp { background-color: #17a2b8; }
 
 
             .action-btn:hover { filter: brightness(1.1); }
             .action-btn:active { filter: brightness(0.9); }
-
-            /* Reupload Specific UI (removed from HTML structure, but keeping styling commented out) */
-            /*
-            .reupload-input-container {
-                margin-top: 10px;
-                display: flex;
-                flex-direction: column;
-                gap: 5px;
-                border-top: 1px solid #eee;
-                padding-top: 10px;
-                width: 100%;
-                box-sizing: border-box;
-            }
-            .reupload-input-container input[type="file"] {
-                font-size: 0.85rem;
-                padding: 5px;
-                width: 100%;
-                box-sizing: border-box;
-                max-width: 100%;
-            }
-            .reupload-input-container button {
-                background-color: #17a2b8;
-                color: white;
-                border: none;
-                padding: 6px 10px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 0.8rem;
-                width: 100%;
-                box-sizing: border-box;
-                max-width: 100%;
-            }
-            .reupload-input-container button:hover {
-                background-color: #138496;
-            }
-            */
         </style>
     </head>
     <body>
         <div class="container">
             <h1>TV Logo Manager</h1>
+
+            <a href="/imgur_auth" class="auth-btn">Login with Imgur</a>
 
             <h2>Upload New Logo(s)</h2>
             <form id="uploadForm" enctype="multipart/form-data">
@@ -468,17 +451,12 @@ def index():
                             <div class="logo-details">
                                 <p><strong>ID:</strong> ${logo.id}</p>
                                 <p><strong>Original Name:</strong> ${logo.original_name}</p>
-                                <p><strong>Processed Name:</strong> ${logo.filename}</p>
-                                <p><strong>Direct URL:</strong> <input type="text" value="${displayUrl}" readonly class="url-input"></p>
+                                <p><strong>Imgur URL:</strong> <input type="text" value="${displayUrl}" readonly class="url-input"></p>
                             </div>
                             <div class="actions">
                                 <button class="action-btn copy-btn" data-url="${displayUrl}">Copy Link</button>
-                                <!-- Reupload button removed -->
                                 <button class="action-btn delete delete-btn" data-id="${logo.id}" data-filename="${logo.original_name}">Delete</button>
-                                <button class="action-btn download-png" data-id="${logo.id}" data-original-name="${logo.original_name}">Download PNG</button>
-                                <button class="action-btn download-webp" data-id="${logo.id}" data-original-name="${logo.original_name}">Download WebP</button>
                             </div>
-                            <!-- Reupload input container removed -->
                         `;
                         logoGallery.appendChild(logoItem);
                     });
@@ -545,12 +523,6 @@ def index():
                     };
                 });
 
-                // Reupload trigger and submit buttons removed
-                /*
-                document.querySelectorAll('.reupload-trigger-btn').forEach(button => { ... });
-                document.querySelectorAll('.reupload-submit-btn').forEach(button => { ... });
-                */
-
                 document.querySelectorAll('.delete-btn').forEach(button => {
                     button.onclick = async () => {
                         const id = button.dataset.id;
@@ -574,20 +546,6 @@ def index():
                                 showMessage(`Delete failed for ID ${id}: ${error.message}.`, 'error');
                             }
                         }
-                    };
-                });
-
-                document.querySelectorAll('.download-png').forEach(button => {
-                    button.onclick = () => {
-                        const id = button.dataset.id;
-                        window.location.href = `/download/${id}/png`;
-                    };
-                });
-
-                document.querySelectorAll('.download-webp').forEach(button => {
-                    button.onclick = () => {
-                        const id = button.dataset.id;
-                        window.location.href = `/download/${id}/webp`;
                     };
                 });
             }
