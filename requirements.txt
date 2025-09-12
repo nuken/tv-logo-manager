@@ -1,5 +1,3 @@
-# tv-logo-manager/requirements.txt
 Flask
 Pillow
-imgurpython
-requests
+cloudinary
