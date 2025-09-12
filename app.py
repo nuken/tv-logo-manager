@@ -50,7 +50,7 @@ def save_logos(logos):
         json.dump(logos, f, indent=4)
 
 # --- Image Processing Function ---
-def process_logo_image_to_webp(image_path):
+def process_logo_image(image_path):
     """
     Processes an image:
     1. Ensures it has an alpha channel (for transparency).
@@ -94,11 +94,11 @@ def upload_file():
         file.save(temp_filepath)
 
         try:
-            processed_img = process_logo_image_to_webp(temp_filepath)
+            processed_img = process_logo_image(temp_filepath)
             
-            # Save processed image to a buffer
+            # Save processed image to a buffer as PNG
             img_byte_arr = io.BytesIO()
-            processed_img.save(img_byte_arr, format='WEBP', lossless=True)
+            processed_img.save(img_byte_arr, format='PNG')
             img_byte_arr.seek(0)
 
             # Upload to Cloudinary
