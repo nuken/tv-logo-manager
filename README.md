@@ -43,7 +43,7 @@ docker volume create tv-logo-data
   - `--name logo-manager`: Assigns a human-readable name to your container (`logo-manager`).
   - `-p 8084:8084`: Maps port 8084 on your host machine to port 8084 inside the container.
   - `-v tv-logo-data:/app/data`: Mounts the named Docker volume `tv-logo-data` to the `/app/data` directory inside the container, ensuring data persistence.
-  - `rcvaughn2/tv-logo-manager`: The name of the Docker image to pull and run from Docker Hub.
+  - `rcvaughn2/tv-logo-manager:original`: The name of the Docker image to pull and run from Docker Hub.
 
 **Access the Application:** Once the container is running, open your web browser and navigate to:  
 http://localhost:8084
