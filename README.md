@@ -41,7 +41,7 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
       -e CLOUDINARY_CLOUD_NAME='YOUR_CLOUD_NAME' \
       -e CLOUDINARY_API_KEY='YOUR_API_KEY' \
       -e CLOUDINARY_API_SECRET='YOUR_API_SECRET' \
-      rcvaughn2/tv-logo-manager:test
+      rcvaughn2/tv-logo-manager
     ```
 
     - `-e CLOUDINARY_CLOUD_NAME`: **(Required)** Your Cloudinary account's Cloud Name.
