@@ -269,14 +269,45 @@ def index():
 
             function attachEventListeners() {
                 document.querySelectorAll('.copy-btn').forEach(button => {
-                    button.onclick = () => {
+                    button.onclick = async () => {
                         const urlToCopy = button.dataset.url;
-                        navigator.clipboard.writeText(urlToCopy).then(() => {
+                        let copiedSuccessfully = false;
+
+                        // Modern approach: Clipboard API (requires secure context)
+                        if (navigator.clipboard && window.isSecureContext) {
+                            try {
+                                await navigator.clipboard.writeText(urlToCopy);
+                                copiedSuccessfully = true;
+                            } catch (err) {
+                                console.error('Modern copy failed:', err);
+                            }
+                        }
+
+                        // Fallback approach for insecure contexts
+                        if (!copiedSuccessfully) {
+                            const textArea = document.createElement('textarea');
+                            textArea.value = urlToCopy;
+                            textArea.style.position = 'fixed';
+                            textArea.style.top = '-9999px';
+                            textArea.style.left = '-9999px';
+                            document.body.appendChild(textArea);
+                            textArea.focus();
+                            textArea.select();
+                            try {
+                                copiedSuccessfully = document.execCommand('copy');
+                            } catch (err) {
+                                console.error('Fallback copy failed:', err);
+                            }
+                            document.body.removeChild(textArea);
+                        }
+                        
+                        // UI Feedback
+                        if (copiedSuccessfully) {
                             button.textContent = 'Copied!';
                             setTimeout(() => { button.textContent = 'Copy Link'; }, 2000);
-                        }, () => {
-                            alert('Failed to copy URL.');
-                        });
+                        } else {
+                            alert('Failed to copy. Please copy the link manually.');
+                        }
                     };
                 });
 
