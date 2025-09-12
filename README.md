@@ -1,11 +1,11 @@
 # **TV Logo Manager**
-V2.1
+V2.1 
 
 A robust, self-hosted Dockerized application designed to streamline the management of TV channel logo images using **Cloudinary** for cloud-based storage and delivery.
 
 ## **✨ Features**
 
-- **Easy Web-Based Setup:** Configure your Cloudinary credentials through a simple web form after the first launch.
+- **Flexible Configuration:** Set your Cloudinary credentials via environment variables (recommended for Docker) or through a one-time web-based setup form.
 - **Cloudinary Integration:** Automatically uploads processed logos to your Cloudinary account.
 - **Local Backup:** Download a zip archive of all your hosted logos with a single click.
 - **Automated Image Processing:** All uploaded images are automatically resized to a **4:3 aspect ratio (720x540px)** and converted to **PNG format**.
@@ -20,7 +20,7 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
 2.  **Cloudinary Account:** You will need a free Cloudinary account.
     * Sign up at [cloudinary.com](https://cloudinary.com/users/register/free).
     * After signing up, navigate to your **Dashboard**. You will find your **Cloud Name**, **API Key**, and **API Secret** here. You will need these when you first open the app.
-      
+
 ### **Running the Application**
 
 1.  **Create a Docker Volume:**
@@ -30,7 +30,25 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
     ```
 
 2.  **Run the Docker Container:**
-    This command is now much simpler, as no credentials are required at startup.
+    You have two options for configuration. Using environment variables is the recommended method.
+
+    **Option A: Configure with Environment Variables (Recommended)**
+    Provide your credentials directly in the `docker run` command. This is ideal for automated setups.
+
+    ```bash
+    docker run -d \
+      --restart unless-stopped \
+      --name logo-manager \
+      -p 8084:8084 \
+      -v tv-logo-data:/app/data \
+      -e CLOUDINARY_CLOUD_NAME='YOUR_CLOUD_NAME' \
+      -e CLOUDINARY_API_KEY='YOUR_API_KEY' \
+      -e CLOUDINARY_API_SECRET='YOUR_API_SECRET' \
+      rcvaughn2/tv-logo-manager
+    ```
+
+    **Option B: Configure with the Web Form**
+    If you prefer not to use environment variables, simply run the container without them.
     ```bash
     docker run -d \
       --restart unless-stopped \
@@ -39,10 +57,6 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
       -v tv-logo-data:/app/data \
       rcvaughn2/tv-logo-manager
     ```
+    Then, open your web browser to **http://localhost:8084**. You will be automatically redirected to a setup page to enter and save your credentials.
 
-3.  **First-Time Setup:**
-    * Open your web browser and navigate to **http://localhost:8084**.
-    * You will be automatically redirected to the setup page.
-    * Enter your Cloudinary `Cloud Name`, `API Key`, and `API Secret` and click "Save".
-
-You will then be taken to the main application and can start uploading your TV logos!
+You can now start uploading your TV logos!

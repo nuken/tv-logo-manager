@@ -5,6 +5,11 @@ FROM python:3.9-slim-buster
 # Set the working directory inside the container
 WORKDIR /app
 
+# Set environment variables for Cloudinary credentials as an option
+ENV CLOUDINARY_CLOUD_NAME=""
+ENV CLOUDINARY_API_KEY=""
+ENV CLOUDINARY_API_SECRET=""
+
 # Copy the requirements file into the container at /app
 COPY requirements.txt .
 # Install any needed Python packages
@@ -20,5 +25,5 @@ RUN mkdir -p data/images
 # Make port 8084 available to the outside world
 EXPOSE 8084
 
-# Define the command to run when the container launches
-CMD ["python", "app.py"]
+# Define the command to run when the container launches using Gunicorn
+CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:8084", "app:app"]

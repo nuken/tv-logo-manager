@@ -22,19 +22,41 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # --- Cloudinary Configuration ---
 def load_cloudinary_config():
-    """Loads Cloudinary config from file and applies it."""
-    if os.path.exists(CONFIG_FILE):
+    """
+    Loads Cloudinary config, prioritizing environment variables over the config file.
+    Returns the config dictionary if successful, otherwise None.
+    """
+    cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME')
+    api_key = os.getenv('CLOUDINARY_API_KEY')
+    api_secret = os.getenv('CLOUDINARY_API_SECRET')
+
+    config = None
+
+    # Priority 1: Environment Variables
+    if all([cloud_name, api_key, api_secret]):
+        config = {
+            "CLOUDINARY_CLOUD_NAME": cloud_name,
+            "CLOUDINARY_API_KEY": api_key,
+            "CLOUDINARY_API_SECRET": api_secret
+        }
+    # Priority 2: Config File
+    elif os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             try:
-                config = json.load(f)
-                cloudinary.config(
-                    cloud_name=config.get('CLOUDINARY_CLOUD_NAME'),
-                    api_key=config.get('CLOUDINARY_API_KEY'),
-                    api_secret=config.get('CLOUDINARY_API_SECRET')
-                )
-                return config
+                file_config = json.load(f)
+                if all(file_config.get(k) for k in ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"]):
+                    config = file_config
             except (json.JSONDecodeError, KeyError):
-                return None
+                pass  # Ignore invalid config file
+
+    if config:
+        cloudinary.config(
+            cloud_name=config.get('CLOUDINARY_CLOUD_NAME'),
+            api_key=config.get('CLOUDINARY_API_KEY'),
+            api_secret=config.get('CLOUDINARY_API_SECRET')
+        )
+        return config
+    
     return None
 
 # --- Helper Functions for Data Storage (Simple JSON DB) ---
@@ -112,7 +134,7 @@ def setup():
     <body>
         <div class="setup-container">
             <h1>Cloudinary Setup</h1>
-            <p>Please enter your Cloudinary credentials from your dashboard.</p>
+            <p>Please enter your Cloudinary credentials from your dashboard. (Note: Environment variables, if set, will override this form).</p>
             <form method="post">
                 <label for="cloud_name">Cloud Name:</label>
                 <input type="text" id="cloud_name" name="cloud_name" required>

@@ -2,3 +2,4 @@ Flask
 Pillow
 cloudinary
 requests
+gunicorn
