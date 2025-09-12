@@ -5,19 +5,15 @@ FROM python:3.9-slim-buster
 # Set the working directory inside the container
 WORKDIR /app
 
-# Set environment variables for Cloudinary credentials
-ENV CLOUDINARY_CLOUD_NAME=""
-ENV CLOUDINARY_API_KEY=""
-ENV CLOUDINARY_API_SECRET=""
-
 # Copy the requirements file into the container at /app
 COPY requirements.txt .
 # Install any needed Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire application code into the container at /app
-# This copies app.py
+# Copy the application and the static folder
 COPY app.py .
+COPY static /app/static
+
 # Create the data directory for persistent storage.
 RUN mkdir -p data/images
 

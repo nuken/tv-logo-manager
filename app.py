@@ -1,5 +1,5 @@
 # tv-logo-manager/app.py
-from flask import Flask, request, send_from_directory, jsonify, redirect, send_file, Response
+from flask import Flask, request, jsonify, redirect, send_file, Response, render_template_string, url_for, send_from_directory
 import os
 from werkzeug.utils import secure_filename
 import json
@@ -9,29 +9,33 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 import sys
+import requests
+import zipfile
 
 app = Flask(__name__)
 
 # --- Configuration ---
 UPLOAD_FOLDER = 'data/images'
 DB_FILE = 'data/logos.json'
+CONFIG_FILE = 'data/config.json'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # --- Cloudinary Configuration ---
-# Read credentials from environment variables
-CLOUDINARY_CLOUD_NAME = os.getenv('CLOUDINARY_CLOUD_NAME')
-CLOUDINARY_API_KEY = os.getenv('CLOUDINARY_API_KEY')
-CLOUDINARY_API_SECRET = os.getenv('CLOUDINARY_API_SECRET')
-
-# Exit if credentials are not set
-if not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
-    sys.exit("Error: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET must be set as environment variables.")
-
-cloudinary.config(
-  cloud_name = CLOUDINARY_CLOUD_NAME,
-  api_key = CLOUDINARY_API_KEY,
-  api_secret = CLOUDINARY_API_SECRET
-)
+def load_cloudinary_config():
+    """Loads Cloudinary config from file and applies it."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            try:
+                config = json.load(f)
+                cloudinary.config(
+                    cloud_name=config.get('CLOUDINARY_CLOUD_NAME'),
+                    api_key=config.get('CLOUDINARY_API_KEY'),
+                    api_secret=config.get('CLOUDINARY_API_SECRET')
+                )
+                return config
+            except (json.JSONDecodeError, KeyError):
+                return None
+    return None
 
 # --- Helper Functions for Data Storage (Simple JSON DB) ---
 def load_logos():
@@ -51,42 +55,91 @@ def save_logos(logos):
 
 # --- Image Processing Function ---
 def process_logo_image(image_path):
-    """
-    Processes an image:
-    1. Ensures it has an alpha channel (for transparency).
-    2. Enforces a 4:3 aspect ratio using padding (letterboxing/pillarboxing).
-    3. Resizes to a standard dimension (720x540 pixels).
-    4. Returns the processed PIL Image object.
-    """
+    """Processes an image to a 720x540 PNG with padding."""
     img = Image.open(image_path).convert("RGBA")
-
-    target_width = 720
-    target_height = 540
-    target_size = (target_width, target_height)
-
-    padded_img = ImageOps.pad(img, target_size, color=(0,0,0,0), centering=(0.5, 0.5))
-
+    target_size = (720, 540)
+    padded_img = ImageOps.pad(img, target_size, color=(0, 0, 0, 0), centering=(0.5, 0.5))
     return padded_img
+
+# --- Middleware to check for configuration ---
+@app.before_request
+def check_config():
+    """Before each request, check if the app is configured."""
+    if request.path.startswith('/static/') or request.endpoint in ['setup', 'favicon']:
+        return
+    if not load_cloudinary_config():
+        return redirect(url_for('setup'))
 
 # --- Flask Routes ---
 
+@app.route('/favicon.ico')
+def favicon():
+    """Serves the favicon."""
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+@app.route('/setup', methods=['GET', 'POST'])
+def setup():
+    """Handles the initial setup of Cloudinary credentials."""
+    if request.method == 'POST':
+        config = {
+            "CLOUDINARY_CLOUD_NAME": request.form['cloud_name'],
+            "CLOUDINARY_API_KEY": request.form['api_key'],
+            "CLOUDINARY_API_SECRET": request.form['api_secret']
+        }
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=4)
+        load_cloudinary_config()
+        return redirect(url_for('index'))
+
+    return render_template_string("""
+    <!doctype html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+        <title>Setup TV Logo Manager</title>
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f4f7f6; }
+            .setup-container { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 400px; }
+            h1 { text-align: center; color: #2c3e50; }
+            form { display: flex; flex-direction: column; gap: 15px; }
+            label { font-weight: bold; }
+            input { padding: 10px; border-radius: 4px; border: 1px solid #ccc; }
+            input[type="submit"] { background-color: #3498db; color: white; cursor: pointer; font-size: 1rem; }
+        </style>
+    </head>
+    <body>
+        <div class="setup-container">
+            <h1>Cloudinary Setup</h1>
+            <p>Please enter your Cloudinary credentials from your dashboard.</p>
+            <form method="post">
+                <label for="cloud_name">Cloud Name:</label>
+                <input type="text" id="cloud_name" name="cloud_name" required>
+                <label for="api_key">API Key:</label>
+                <input type="text" id="api_key" name="api_key" required>
+                <label for="api_secret">API Secret:</label>
+                <input type="password" id="api_secret" name="api_secret" required>
+                <input type="submit" value="Save Configuration">
+            </form>
+        </div>
+    </body>
+    </html>
+    """)
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """
-    Handles new image uploads, processes them, and uploads to Cloudinary.
-    """
+    """Handles new image uploads, processes them, and uploads to Cloudinary."""
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
 
     uploaded_files = request.files.getlist('file')
-
-    if not uploaded_files:
+    if not uploaded_files or uploaded_files[0].filename == '':
         return jsonify({"error": "No files selected"}), 400
 
     results = []
     for file in uploaded_files:
         if file.filename == '':
-            results.append({"error": "Empty filename in multi-upload."})
             continue
 
         original_filename = secure_filename(file.filename)
@@ -95,20 +148,14 @@ def upload_file():
 
         try:
             processed_img = process_logo_image(temp_filepath)
-            
-            # Save processed image to a buffer as PNG
             img_byte_arr = io.BytesIO()
             processed_img.save(img_byte_arr, format='PNG')
             img_byte_arr.seek(0)
-
-            # Upload to Cloudinary
             upload_result = cloudinary.uploader.upload(img_byte_arr, folder="tv-logos")
-            os.remove(temp_filepath) # Remove temporary file
+            os.remove(temp_filepath)
 
             logos = load_logos()
-            
-            # Generate a new unique ID
-            new_id = max([l['id'] for l in logos]) + 1 if logos else 1
+            new_id = max([l.get('id', 0) for l in logos]) + 1 if logos else 1
             logos.append({
                 "id": new_id,
                 "public_id": upload_result['public_id'],
@@ -116,76 +163,79 @@ def upload_file():
                 "url": upload_result['secure_url']
             })
             save_logos(logos)
-            results.append({"message": "File uploaded and processed", "id": new_id, "url": upload_result['secure_url']})
-
+            results.append({"message": "File uploaded", "id": new_id, "url": upload_result['secure_url']})
         except Exception as e:
             if os.path.exists(temp_filepath):
                 os.remove(temp_filepath)
-            app.logger.error(f"Image processing failed for {original_filename}: {e}")
-            results.append({"error": f"Image processing failed for {original_filename}: {e}"})
+            app.logger.error(f"Upload failed for {original_filename}: {e}")
+            results.append({"error": f"Upload failed for {original_filename}: {e}"})
 
-    if len(results) == 1:
-        return jsonify(results[0]), 200 if "message" in results[0] else 500
-    else:
-        status_code = 200 if any("message" in r for r in results) else 500
-        return jsonify(results), status_code
-
-
-@app.route('/images', methods=['GET'])
-def get_image():
-    """
-    Redirects to the Cloudinary URL for the image.
-    """
-    image_id = request.args.get('id')
-    if not image_id:
-        return jsonify({"error": "Missing image ID"}), 400
-
-    logos = load_logos()
-    logo = next((l for l in logos if str(l['id']) == image_id), None)
-
-    if logo and 'url' in logo:
-        return redirect(logo['url'])
-    
-    return jsonify({"error": "Image not found"}), 404
+    status_code = 200 if any("message" in r for r in results) else 500
+    return jsonify(results[0] if len(results) == 1 else results), status_code
 
 @app.route('/api/logos', methods=['GET'])
 def list_logos():
-    """Returns a JSON list of all uploaded logo metadata with their direct Cloudinary URLs."""
+    """Returns a JSON list of all uploaded logo metadata."""
     logos = load_logos()
-    sorted_logos = sorted(logos, key=lambda x: x.get('id', 0))
-    return jsonify(sorted_logos)
+    return jsonify(sorted(logos, key=lambda x: x.get('id', 0)))
 
 @app.route('/api/logos/<int:logo_id>', methods=['DELETE'])
 def delete_logo(logo_id):
     """Deletes a logo by its ID from the local DB and Cloudinary."""
     logos = load_logos()
     logo_to_delete = next((logo for logo in logos if logo['id'] == logo_id), None)
-
     if not logo_to_delete:
-        return jsonify({"error": f"Logo ID {logo_id} not found."}), 404
+        return jsonify({"error": "Logo not found"}), 404
         
     try:
-        # Delete from Cloudinary
         cloudinary.uploader.destroy(logo_to_delete['public_id'])
-        
-        # Remove from local DB
         logos_after_deletion = [logo for logo in logos if logo['id'] != logo_id]
         save_logos(logos_after_deletion)
-        
-        return jsonify({"message": f"Logo ID {logo_id} deleted successfully."}), 200
+        return jsonify({"message": "Logo deleted"}), 200
     except Exception as e:
-        app.logger.error(f"Failed to delete logo ID {logo_id}: {e}")
-        return jsonify({"error": f"Failed to delete logo ID {logo_id}: {e}"}), 500
+        app.logger.error(f"Delete failed for logo ID {logo_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/backup')
+def backup_logos():
+    """Creates and serves a zip archive of all logos."""
+    logos = load_logos()
+    if not logos:
+        return "No logos to back up.", 404
+
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for logo in logos:
+            try:
+                url = logo['url']
+                if '/upload/' in url:
+                    parts = url.split('/upload/')
+                    backup_url = parts[0] + '/upload/f_png/' + parts[1]
+                else:
+                    backup_url = url
+                
+                response = requests.get(backup_url)
+                response.raise_for_status()
+                
+                base_name, _ = os.path.splitext(logo['original_name'])
+                filename_in_zip = f"{logo['id']}_{base_name}.png"
+                zf.writestr(filename_in_zip, response.content)
+            except requests.exceptions.RequestException as e:
+                app.logger.error(f"Could not download {logo['url']} for backup: {e}")
+    
+    memory_file.seek(0)
+    return send_file(memory_file, download_name='tv_logos_backup.zip', as_attachment=True)
 
 @app.route('/')
 def index():
     """Serves the main HTML page."""
-    return """
+    return render_template_string("""
     <!doctype html>
     <html lang="en">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
         <title>TV Logo Manager</title>
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
@@ -193,8 +243,8 @@ def index():
             h1, h2 { color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; margin-top: 30px; }
             #uploadForm { display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px; padding: 20px; border: 1px dashed #bdc3c7; border-radius: 6px; background-color: #fcfcfc; }
             #fileInput { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-            input[type="submit"] { background-color: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 1rem; transition: background-color 0.2s ease; }
-            input[type="submit"]:hover { background-color: #2980b9; }
+            .button, input[type="submit"] { background-color: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 1rem; text-decoration: none; display: inline-block; text-align: center; transition: background-color 0.2s ease; }
+            .button:hover, input[type="submit"]:hover { background-color: #2980b9; }
             #uploadMessage { margin-top: 15px; padding: 10px; border-radius: 4px; display: none; }
             #uploadMessage.info { background-color: #e9ecef; color: #333; }
             #uploadMessage.success { background-color: #d4edda; color: #155724; }
@@ -209,11 +259,15 @@ def index():
             .action-btn { background-color: #28a745; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-size: 0.85rem; transition: background-color 0.2s ease; }
             .action-btn.delete { background-color: #dc3545; }
             .action-btn:hover { filter: brightness(1.1); }
+            .header-actions { margin-bottom: 20px; }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>TV Logo Manager</h1>
+            <div class="header-actions">
+                <a href="/backup" class="button">Download Backup</a>
+            </div>
             <h2>Upload New Logo(s)</h2>
             <form id="uploadForm" enctype="multipart/form-data">
               <input type="file" name="file" id="fileInput" accept="image/*" multiple required>
@@ -272,8 +326,6 @@ def index():
                     button.onclick = async () => {
                         const urlToCopy = button.dataset.url;
                         let copiedSuccessfully = false;
-
-                        // Modern approach: Clipboard API (requires secure context)
                         if (navigator.clipboard && window.isSecureContext) {
                             try {
                                 await navigator.clipboard.writeText(urlToCopy);
@@ -282,8 +334,6 @@ def index():
                                 console.error('Modern copy failed:', err);
                             }
                         }
-
-                        // Fallback approach for insecure contexts
                         if (!copiedSuccessfully) {
                             const textArea = document.createElement('textarea');
                             textArea.value = urlToCopy;
@@ -300,8 +350,6 @@ def index():
                             }
                             document.body.removeChild(textArea);
                         }
-                        
-                        // UI Feedback
                         if (copiedSuccessfully) {
                             button.textContent = 'Copied!';
                             setTimeout(() => { button.textContent = 'Copy Link'; }, 2000);
@@ -369,14 +417,13 @@ def index():
         </script>
     </body>
     </html>
-    """
+    """)
 
-# --- Main entry point for Flask app ---
+# --- Main entry point ---
 if __name__ == '__main__':
-    # Ensure data directories exist on startup
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    os.makedirs(os.path.join('data', 'images'), exist_ok=True)
     if not os.path.exists(DB_FILE):
-        with open(DB_FILE, 'w') as f:
-            json.dump([], f)
-
+        save_logos([])
+    if not os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'w') as f: json.dump({}, f)
     app.run(debug=False, host='0.0.0.0', port=8084)
