@@ -1,4 +1,4 @@
-# **TV Logo Manager**
+# **TV Logo Manager V2**
 
 A robust, self-hosted Dockerized application designed to streamline the management of TV channel logo images using **Cloudinary** for cloud-based storage and delivery.
 
