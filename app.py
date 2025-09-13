@@ -13,6 +13,7 @@ import requests
 import zipfile
 
 app = Flask(__name__)
+__version__ = "2.1"
 
 # --- Configuration ---
 UPLOAD_FOLDER = 'data/images'
@@ -251,7 +252,7 @@ def backup_logos():
 @app.route('/')
 def index():
     """Serves the main HTML page."""
-    return render_template_string("""
+    template = """
     <!doctype html>
     <html lang="en">
     <head>
@@ -260,8 +261,8 @@ def index():
         <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
         <title>TV Logo Manager</title>
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
-            .container { max-width: 1000px; margin: 0 auto; background-color: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background-color: #f4f7f6; color: #333; }
+            .container { max-width: 1000px; margin: 20px auto; background-color: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
             h1, h2 { color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; margin-top: 30px; }
             #uploadForm { display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px; padding: 20px; border: 1px dashed #bdc3c7; border-radius: 6px; background-color: #fcfcfc; }
             #fileInput { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
@@ -282,6 +283,7 @@ def index():
             .action-btn.delete { background-color: #dc3545; }
             .action-btn:hover { filter: brightness(1.1); }
             .header-actions { margin-bottom: 20px; }
+            footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ecf0f1; color: #7f8c8d; }
         </style>
     </head>
     <body>
@@ -299,6 +301,9 @@ def index():
             <h2>Uploaded Logos</h2>
             <div id="logoGallery"><p>Loading logos...</p></div>
         </div>
+        <footer>
+            <p>Version: {{ version }}</p>
+        </footer>
         <script>
             const uploadForm = document.getElementById('uploadForm');
             const fileInput = document.getElementById('fileInput');
@@ -439,7 +444,8 @@ def index():
         </script>
     </body>
     </html>
-    """)
+    """
+    return render_template_string(template, version=__version__)
 
 # --- Main entry point ---
 if __name__ == '__main__':
