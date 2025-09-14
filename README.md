@@ -60,3 +60,20 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
     Then, open your web browser to **http://localhost:8084**. You will be automatically redirected to a setup page to enter and save your credentials.
 
 You can now start uploading your TV logos!
+
+### **Change Log**
+
+* **Version 2.1.1**
+* **UI Enhancements:**
+    * The version number was moved from the footer to the top-right of the header for better visibility.
+    * A "Clear Image Cache" button was added to the header, allowing you to easily purge locally saved images and fetch fresh copies from Cloudinary.
+* **Local Image Caching:** To reduce Cloudinary bandwidth usage and speed up the gallery, I implemented a local caching system. Images are now served from a local cache after being downloaded once.
+* **Directory Creation Fix:** I made the application more robust by adding code to automatically create the necessary `data/cache` and `data/images` directories on startup.
+
+* **Version 2.1**
+* **Version Number Display:** I added a `__version__` variable to the `app.py` script and displayed it on the main page for easy reference.
+* **Local Backup Feature:** I added a `/backup` route and a "Download Backup" button so you can download a zip file of all your processed logos directly from Cloudinary.
+* **Favicon Support:** To eliminate the "favicon.ico not found" warnings in the logs, I added a route to serve a favicon and updated the `Dockerfile` to include a `static` directory for it.
+* **Hybrid Configuration:** I created a flexible configuration system. The app now prioritizes Cloudinary credentials set via environment variables but will fall back to using the web-based setup form if they aren't provided.
+* **Production WSGI Server:** To remove the Flask development server warning and make the application more suitable for continuous use, I switched to the Gunicorn WSGI server.
+
