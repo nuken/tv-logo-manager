@@ -18,8 +18,9 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
 ### **Prerequisites**
 
 1.  **Docker:** Ensure you have **Docker Desktop** (Windows/macOS) or **Docker Engine** (Linux) installed.
-2.  **Cloudinary Account:** You will need a free Cloudinary account to get your **Cloud Name**, **API Key**, and **API Secret** from the dashboard.
-
+2.  **Cloudinary Account:** You will need a free Cloudinary account.
+    * Sign up at [cloudinary.com](https://cloudinary.com/users/register/free).
+    * After signing up, navigate to your **Dashboard**. You will find your **Cloud Name**, **API Key**, and **API Secret** here. You will need these when you first open the app.
 ### **Running the Application**
 
 1.  **Create a Docker Volume:**
