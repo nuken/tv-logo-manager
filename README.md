@@ -1,5 +1,4 @@
-# **TV Logo Manager**
-V2.1 
+# **TV Logo Manager** V2.1.1
 
 A robust, self-hosted Dockerized application designed to streamline the management of TV channel logo images using **Cloudinary** for cloud-based storage and delivery.
 
@@ -7,19 +6,19 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
 
 - **Flexible Configuration:** Set your Cloudinary credentials via environment variables (recommended for Docker) or through a one-time web-based setup form.
 - **Cloudinary Integration:** Automatically uploads processed logos to your Cloudinary account.
+- **Local Image Caching:** Images are cached locally after the first view to reduce bandwidth usage and speed up gallery loading.
+- **Clear Cache:** A simple button to clear the local image cache, forcing the app to re-download fresh copies from Cloudinary.
 - **Local Backup:** Download a zip archive of all your hosted logos with a single click.
 - **Automated Image Processing:** All uploaded images are automatically resized to a **4:3 aspect ratio (720x540px)** and converted to **PNG format**.
 - **Interactive Logo Gallery:** View, manage, and copy links for all your uploaded logos.
-- **Persistent Storage:** Logo and configuration data are stored in a persistent Docker volume.
+- **Persistent Storage:** Logo, configuration, and cached image data are stored in a persistent Docker volume.
 
 ## **🚀 Getting Started**
 
 ### **Prerequisites**
 
 1.  **Docker:** Ensure you have **Docker Desktop** (Windows/macOS) or **Docker Engine** (Linux) installed.
-2.  **Cloudinary Account:** You will need a free Cloudinary account.
-    * Sign up at [cloudinary.com](https://cloudinary.com/users/register/free).
-    * After signing up, navigate to your **Dashboard**. You will find your **Cloud Name**, **API Key**, and **API Secret** here. You will need these when you first open the app.
+2.  **Cloudinary Account:** You will need a free Cloudinary account to get your **Cloud Name**, **API Key**, and **API Secret** from the dashboard.
 
 ### **Running the Application**
 

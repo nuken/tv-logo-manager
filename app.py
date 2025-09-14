@@ -13,13 +13,19 @@ import requests
 import zipfile
 
 app = Flask(__name__)
-__version__ = "2.1"
+__version__ = "2.1.1"
 
 # --- Configuration ---
 UPLOAD_FOLDER = 'data/images'
+CACHE_FOLDER = 'data/cache'
 DB_FILE = 'data/logos.json'
 CONFIG_FILE = 'data/config.json'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['CACHE_FOLDER'] = CACHE_FOLDER
+
+# --- Ensure Data Directories Exist on Startup ---
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(CACHE_FOLDER, exist_ok=True)
 
 # --- Cloudinary Configuration ---
 def load_cloudinary_config():
@@ -88,7 +94,7 @@ def process_logo_image(image_path):
 @app.before_request
 def check_config():
     """Before each request, check if the app is configured."""
-    if request.path.startswith('/static/') or request.endpoint in ['setup', 'favicon']:
+    if request.path.startswith(('/static/', '/cached-image/')) or request.endpoint in ['setup', 'favicon']:
         return
     if not load_cloudinary_config():
         return redirect(url_for('setup'))
@@ -100,6 +106,47 @@ def favicon():
     """Serves the favicon."""
     return send_from_directory(os.path.join(app.root_path, 'static'),
                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+@app.route('/cached-image/<int:logo_id>')
+def get_cached_image(logo_id):
+    """Serves an image from the local cache, downloading it from Cloudinary if not present."""
+    filename = f"{logo_id}.png"
+    cache_path = os.path.join(app.config['CACHE_FOLDER'], filename)
+
+    if os.path.exists(cache_path):
+        return send_from_directory(app.config['CACHE_FOLDER'], filename)
+
+    logos = load_logos()
+    logo = next((l for l in logos if l.get('id') == logo_id), None)
+
+    if not logo or not logo.get('url'):
+        return "Image not found in database.", 404
+
+    try:
+        response = requests.get(logo['url'])
+        response.raise_for_status()
+
+        with open(cache_path, 'wb') as f:
+            f.write(response.content)
+
+        return send_from_directory(app.config['CACHE_FOLDER'], filename)
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Failed to cache image ID {logo_id} from {logo['url']}: {e}")
+        return redirect(logo['url'])
+
+@app.route('/clear-cache')
+def clear_cache():
+    """Deletes all files in the local image cache directory."""
+    cache_dir = app.config['CACHE_FOLDER']
+    for filename in os.listdir(cache_dir):
+        file_path = os.path.join(cache_dir, filename)
+        try:
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+                app.logger.info(f"Removed cached file: {file_path}")
+        except Exception as e:
+            app.logger.error(f"Error deleting cache file {file_path}: {e}")
+    return redirect(url_for('index'))
 
 @app.route('/setup', methods=['GET', 'POST'])
 def setup():
@@ -204,7 +251,7 @@ def list_logos():
 
 @app.route('/api/logos/<int:logo_id>', methods=['DELETE'])
 def delete_logo(logo_id):
-    """Deletes a logo by its ID from the local DB and Cloudinary."""
+    """Deletes a logo by its ID from Cloudinary and the local cache."""
     logos = load_logos()
     logo_to_delete = next((logo for logo in logos if logo['id'] == logo_id), None)
     if not logo_to_delete:
@@ -212,6 +259,9 @@ def delete_logo(logo_id):
         
     try:
         cloudinary.uploader.destroy(logo_to_delete['public_id'])
+        cache_path = os.path.join(app.config['CACHE_FOLDER'], f"{logo_id}.png")
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
         logos_after_deletion = [logo for logo in logos if logo['id'] != logo_id]
         save_logos(logos_after_deletion)
         return jsonify({"message": "Logo deleted"}), 200
@@ -236,10 +286,8 @@ def backup_logos():
                     backup_url = parts[0] + '/upload/f_png/' + parts[1]
                 else:
                     backup_url = url
-                
                 response = requests.get(backup_url)
                 response.raise_for_status()
-                
                 base_name, _ = os.path.splitext(logo['original_name'])
                 filename_in_zip = f"{logo['id']}_{base_name}.png"
                 zf.writestr(filename_in_zip, response.content)
@@ -267,7 +315,9 @@ def index():
             #uploadForm { display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px; padding: 20px; border: 1px dashed #bdc3c7; border-radius: 6px; background-color: #fcfcfc; }
             #fileInput { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
             .button, input[type="submit"] { background-color: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 1rem; text-decoration: none; display: inline-block; text-align: center; transition: background-color 0.2s ease; }
+            .button.clear-cache { background-color: #e67e22; }
             .button:hover, input[type="submit"]:hover { background-color: #2980b9; }
+            .button.clear-cache:hover { background-color: #d35400; }
             #uploadMessage { margin-top: 15px; padding: 10px; border-radius: 4px; display: none; }
             #uploadMessage.info { background-color: #e9ecef; color: #333; }
             #uploadMessage.success { background-color: #d4edda; color: #155724; }
@@ -282,15 +332,20 @@ def index():
             .action-btn { background-color: #28a745; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-size: 0.85rem; transition: background-color 0.2s ease; }
             .action-btn.delete { background-color: #dc3545; }
             .action-btn:hover { filter: brightness(1.1); }
-            .header-actions { margin-bottom: 20px; }
-            footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ecf0f1; color: #7f8c8d; }
+            .header { display: flex; justify-content: space-between; align-items: center; }
+            .header-actions { display: flex; gap: 10px; }
+            .version-info { color: #7f8c8d; font-size: 0.9rem; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>TV Logo Manager</h1>
+            <div class="header">
+                <h1>TV Logo Manager</h1>
+                <span class="version-info">Version: {{ version }}</span>
+            </div>
             <div class="header-actions">
                 <a href="/backup" class="button">Download Backup</a>
+                <a href="/clear-cache" class="button clear-cache">Clear Image Cache</a>
             </div>
             <h2>Upload New Logo(s)</h2>
             <form id="uploadForm" enctype="multipart/form-data">
@@ -301,9 +356,6 @@ def index():
             <h2>Uploaded Logos</h2>
             <div id="logoGallery"><p>Loading logos...</p></div>
         </div>
-        <footer>
-            <p>Version: {{ version }}</p>
-        </footer>
         <script>
             const uploadForm = document.getElementById('uploadForm');
             const fileInput = document.getElementById('fileInput');
@@ -328,14 +380,14 @@ def index():
                         const logoItem = document.createElement('div');
                         logoItem.className = 'logo-item';
                         logoItem.innerHTML = `
-                            <img src="${logo.url}" alt="Logo ID: ${logo.id}" loading="lazy">
+                            <img src="/cached-image/${logo.id}" alt="Logo ID: ${logo.id}" loading="lazy">
                             <div class="logo-details">
                                 <p><strong>ID:</strong> ${logo.id}</p>
                                 <p><strong>Original:</strong> ${logo.original_name}</p>
                                 <input type="text" value="${logo.url}" readonly class="url-input">
                             </div>
                             <div class="actions">
-                                <button class="action-btn copy-btn" data-url="${logo.url}">Copy Link</button>
+                                <button class="action-btn copy-btn" data-url="${logo.url}">Copy Cloudinary Link</button>
                                 <button class="action-btn delete delete-btn" data-id="${logo.id}" data-filename="${logo.original_name}">Delete</button>
                             </div>
                         `;
@@ -379,7 +431,7 @@ def index():
                         }
                         if (copiedSuccessfully) {
                             button.textContent = 'Copied!';
-                            setTimeout(() => { button.textContent = 'Copy Link'; }, 2000);
+                            setTimeout(() => { button.textContent = 'Copy Cloudinary Link'; }, 2000);
                         } else {
                             alert('Failed to copy. Please copy the link manually.');
                         }
@@ -449,7 +501,9 @@ def index():
 
 # --- Main entry point ---
 if __name__ == '__main__':
+    # Ensure data directories exist on startup
     os.makedirs(os.path.join('data', 'images'), exist_ok=True)
+    os.makedirs(os.path.join('data', 'cache'), exist_ok=True)
     if not os.path.exists(DB_FILE):
         save_logos([])
     if not os.path.exists(CONFIG_FILE):
