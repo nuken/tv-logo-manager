@@ -13,7 +13,7 @@ import requests
 import zipfile
 
 app = Flask(__name__)
-__version__ = "2.1.1"
+__version__ = "2.1.2"
 
 # --- Configuration ---
 UPLOAD_FOLDER = 'data/images'
