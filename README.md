@@ -1,4 +1,4 @@
-# **TV Logo Manager** V2.1.1
+# **TV Logo Manager** V2.1.2
 
 A robust, self-hosted Dockerized application designed to streamline the management of TV channel logo images using **Cloudinary** for cloud-based storage and delivery.
 
@@ -62,6 +62,10 @@ A robust, self-hosted Dockerized application designed to streamline the manageme
 You can now start uploading your TV logos!
 
 ### **Change Log**
+
+* **Version 2.1.2**
+* **Update Python** From 3.9 to 3.13.
+* **Asynchronous I/O** Included `gevent` to avoid potential timeouts.
 
 * **Version 2.1.1**
 * **UI Enhancements:**
