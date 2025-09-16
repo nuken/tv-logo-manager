@@ -3,3 +3,4 @@ Pillow
 cloudinary
 requests
 gunicorn
+gevent

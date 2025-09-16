@@ -1,6 +1,6 @@
 # tv-logo-manager/Dockerfile
 # Use a lightweight official Python runtime as a parent image
-FROM python:3.9-slim-buster
+FROM python:3.13-slim-bookworm
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -26,4 +26,4 @@ RUN mkdir -p data/images data/cache
 EXPOSE 8084
 
 # Define the command to run when the container launches using Gunicorn
-CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:8084", "app:app"]
+CMD ["gunicorn", "--workers", "3", "--worker-class", "gevent", "--bind", "0.0.0.0:8084", "app:app"]
