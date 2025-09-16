@@ -1,6 +1,6 @@
 # tv-logo-manager/Dockerfile
 # Use a lightweight official Python runtime as a parent image
-FROM python:3.13-slim-bookworm
+FROM python:3.9-slim-buster
 
 # Set the working directory inside the container
 WORKDIR /app
